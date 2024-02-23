@@ -21,7 +21,7 @@ def get_upload_queue_folder_path():
 if __name__ == "__main__":
     aws_access_key = ''
     aws_secret_key = ''
-    aws_bucket_name = 'andrew-testing-assistiq'
+    aws_bucket_name = ''
 
     upload_folder = get_upload_queue_folder_path()
 
