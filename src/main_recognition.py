@@ -23,7 +23,7 @@ if __name__ == "__main__":
     print("Invalid camera type")
     exit(1)
 
-  processor = FrameProcessor() 
+  processor = FrameProcessor(roi_size=(500, 500), roi_position=(600, 100)) 
 
   camera.start()
 

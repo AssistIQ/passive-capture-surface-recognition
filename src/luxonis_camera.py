@@ -3,14 +3,14 @@ import time
 import logging as log
 
 class LuxonisCamera:
-    def __init__(self):
+    def __init__(self, camera_fps=10, sharpness=4, luma_denoise=4, chroma_denoise=4, preview_size=(3840, 2160), interleaved=False):
         self.output_capture = None
-        self.camera_fps = 10
-        self.sharpness = 4
-        self.luma_denoise = 4
-        self.chroma_denoise = 4
-        self.preview_size = (3840, 2160)
-        self.interleaved = False
+        self.camera_fps = camera_fps
+        self.sharpness = sharpness
+        self.luma_denoise = luma_denoise
+        self.chroma_denoise = chroma_denoise
+        self.preview_size = preview_size
+        self.interleaved = interleaved
 
     def start(self):
         try:
