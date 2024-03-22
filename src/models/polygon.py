@@ -10,7 +10,6 @@ class Polygon:
 
     @property
     def edges(self):
-        ''' Returns a list of tuples that each contain 2 points of an edge '''
         edge_list = []
         for i,p in enumerate(self.points):
             p1 = p
@@ -19,8 +18,15 @@ class Polygon:
 
         return edge_list
     
+    @property
+    def edges_as_tuples(self):
+        return [(p1.to_tuple(), p2.to_tuple()) for p1, p2 in self.edges]
+    
+    @property
+    def points_as_tuples(self):
+        return [p.to_tuple() for p in self.points]
+    
     def draw(self, frame, color=(0, 255, 0), thickness=2):
-        ''' Draws the polygon on the frame '''
         for i in range(len(self.points)):
             p1 = self.points[i]
             p2 = self.points[(i+1) % len(self.points)]

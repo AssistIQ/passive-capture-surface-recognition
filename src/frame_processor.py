@@ -1,3 +1,4 @@
+import time
 import cv2
 import numpy as np
 import mediapipe as mp
@@ -19,6 +20,17 @@ class FrameProcessor:
         center_x = self.roi_polygon.points[0].x + (self.roi_width / 2)
         center_y = self.roi_polygon.points[0].y + (self.roi_height / 2)
         self.roi_center = Point(center_x, center_y)
+
+        # Constants
+        self.WAIT_NO_HANDS_SECONDS = 5
+        self.WAIT_END_INTERACTION_FRAMES = 10
+        self.CONTOUR_AREA_THRESHOLD = 25000
+
+        self.interaction_start_ts = None
+        self.is_interaction_started = False
+        self.last_movement_ts = None
+
+        self.frames_without_movement = 0
 
         mp_hands = mp.solutions.hands
         self.hands = mp_hands.Hands()
@@ -51,15 +63,47 @@ class FrameProcessor:
         
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        hand_detection_results = self.hands.process(rgb_frame)
-
-        # draw roi rectangle on frame where points is a Point class
+        # draw roi polygon on frame
         self.roi_polygon.draw(frame)
 
-        if not hand_detection_results.multi_hand_landmarks:
-            return
+        is_hand_inside_roi = self.check_hand_in_roi(rgb_frame)
         
-        is_hand_inside_roi = False
+        # why do we still need to check if hands are in the frame if we're already checking if the hand is inside the roi?
+        if is_hand_inside_roi:
+            self.last_movement_ts = time.time()
+            if not self.is_interaction_started:
+                self.is_interaction_started = True
+                self.interaction_start_ts = time.time()
+                print("Interaction started")
+            else:
+                self.interaction_start_ts = time.time()
+                print("Interaction updated")
+        else:
+            if self.is_interaction_started:
+                if self.background_mask_did_change(mask):
+                    self.frames_without_movement = 0
+                    self.last_movement_ts = time.time()
+                    print("movement still detected")
+                else:
+                    self.frames_without_movement += 1
+                    print('checking movement time elaspsed...')
+                    if self.frames_without_movement > self.WAIT_END_INTERACTION_FRAMES:
+                        print("frame has no movement")
+                        current_ts = time.time()
+                        if (current_ts - self.last_movement_ts) > self.WAIT_NO_HANDS_SECONDS:
+                            print("No hands detected for 5 seconds, ending session")
+                            self.last_movement_ts = None
+                            self.frames_without_movement = 0
+                            self.is_interaction_started = False
+        return frame 
+    
+    def check_hand_in_roi(self, frame):
+        hand_detection_results = self.hands.process(frame)
+
+        if not hand_detection_results.multi_hand_landmarks:
+            return False
+
+        is_hand_inside_roi = False  
         for landmarks in hand_detection_results.multi_hand_landmarks:
             self.draw_hand(frame, landmarks)
             is_hand_inside_roi = self.check_hand_inside_roi(frame, landmarks)
@@ -68,10 +112,16 @@ class FrameProcessor:
 
         if is_hand_inside_roi:
             cv2.putText(frame, "Hand inside roi", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-        self.handle_interaction(is_hand_inside_roi)
-        
-        return frame
-    
+
+        return is_hand_inside_roi
+
+
+    def background_mask_did_change(self, mask):
+        movement_area = np.sum(mask)
+        mask_area = mask.shape[0] * mask.shape[1]
+        movement_ratio = movement_area / mask_area
+        return movement_ratio > 0.1
+
     def check_hand_inside_roi(self, frame, landmarks):
         frame_height, frame_width, _ = frame.shape
         # use thumb tip (4)
@@ -86,17 +136,3 @@ class FrameProcessor:
                 joint_x = int(landmarks.landmark[joint].x * frame_width)
                 joint_y = int(landmarks.landmark[joint].y * frame_height)
                 cv2.circle(frame, (joint_x, joint_y), 5, (255, 0, 0), -1)
-
-    def start_interaction(self):
-        self.is_session_started = True
-        pass
-
-    def update_interaction(self):
-        pass
-
-    def end_interaction(self):
-        self.is_session_started = False
-        pass
-
-    def handle_interaction(self, is_hand_inside_roi):
-        pass
