@@ -33,7 +33,7 @@ if __name__ == "__main__":
     if frame is None:
       continue
     
-    processor.process(frame)
+    frame = processor.process(frame)
     cv2.imshow("Frame", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):

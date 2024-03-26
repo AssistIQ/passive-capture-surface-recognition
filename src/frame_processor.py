@@ -7,7 +7,7 @@ from models.polygon import Polygon
 
 class FrameProcessor:
     def __init__(self, roi_size=(3000, 1700), roi_position=(600, 100)):
-        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2()
+        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(detectShadows=True)
         # https://developers.google.com/mediapipe/solutions/vision/hand_landmarker
         self.joint_list = [2,3,4,8,7,6,12,11,10,16,15,14,20,19,18]
 
@@ -22,9 +22,9 @@ class FrameProcessor:
         self.roi_center = Point(center_x, center_y)
 
         # Constants
-        self.WAIT_NO_HANDS_SECONDS = 5
-        self.WAIT_END_INTERACTION_FRAMES = 10
-        self.CONTOUR_AREA_THRESHOLD = 25000
+        self.HANDS_ABSENCE_THRESHOLD_SECONDS = 5
+        self.INTERACTION_END_THRESHOLD_FRAMES = 10
+        self.CHANGE_IN_ROI_MASK_THRESHOLD = 0.05
 
         self.interaction_start_ts = None
         self.is_interaction_started = False
@@ -54,12 +54,11 @@ class FrameProcessor:
 
 
     def process(self, frame):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        mask = self.bg_subtractor.apply(gray)
-        mask = cv2.threshold(mask, 225, 255, cv2.THRESH_BINARY)[1]
-
-        kernel = np.ones((5,5),np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = self.bg_subtractor.apply(frame)
+        # Filter out shadows
+        _, mask = cv2.threshold(mask, 250, 255, cv2.THRESH_BINARY)
+        mask = cv2.erode(mask, None, iterations=1)
+        mask = cv2.dilate(mask, None, iterations=2)
         
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -67,8 +66,9 @@ class FrameProcessor:
         self.roi_polygon.draw(frame)
 
         is_hand_inside_roi = self.check_hand_in_roi(rgb_frame)
+
+        self.roi_contains_movement(mask)
         
-        # why do we still need to check if hands are in the frame if we're already checking if the hand is inside the roi?
         if is_hand_inside_roi:
             self.last_movement_ts = time.time()
             if not self.is_interaction_started:
@@ -79,22 +79,21 @@ class FrameProcessor:
                 self.interaction_start_ts = time.time()
                 print("Interaction updated")
         else:
-            if self.is_interaction_started:
-                if self.background_mask_did_change(mask):
+            current_ts = time.time()
+            if self.is_interaction_started and (current_ts - self.last_movement_ts) > self.HANDS_ABSENCE_THRESHOLD_SECONDS: 
+                print("No hands detected for 5 seconds")  
+                if self.roi_contains_movement(mask):
                     self.frames_without_movement = 0
-                    self.last_movement_ts = time.time()
                     print("movement still detected")
                 else:
                     self.frames_without_movement += 1
-                    print('checking movement time elaspsed...')
-                    if self.frames_without_movement > self.WAIT_END_INTERACTION_FRAMES:
-                        print("frame has no movement")
-                        current_ts = time.time()
-                        if (current_ts - self.last_movement_ts) > self.WAIT_NO_HANDS_SECONDS:
-                            print("No hands detected for 5 seconds, ending session")
-                            self.last_movement_ts = None
-                            self.frames_without_movement = 0
-                            self.is_interaction_started = False
+                    print('waiting for frame to stay still')
+                    if self.frames_without_movement > self.INTERACTION_END_THRESHOLD_FRAMES:
+                        print("roi has no movement, end interaction")
+                        self.last_movement_ts = None
+                        self.frames_without_movement = 0
+                        self.is_interaction_started = False
+            
         return frame 
     
     def check_hand_in_roi(self, frame):
@@ -116,11 +115,18 @@ class FrameProcessor:
         return is_hand_inside_roi
 
 
-    def background_mask_did_change(self, mask):
-        movement_area = np.sum(mask)
-        mask_area = mask.shape[0] * mask.shape[1]
-        movement_ratio = movement_area / mask_area
-        return movement_ratio > 0.1
+    def roi_contains_movement(self, mask):
+        roi_x1 = self.roi_polygon.points[0].x
+        roi_y1 = self.roi_polygon.points[0].y
+        roi_x2 = self.roi_polygon.points[2].x
+        roi_y2 = self.roi_polygon.points[2].y
+
+        roi_mask = mask[roi_y1:roi_y2, roi_x1:roi_x2]
+        movement_area = np.sum(roi_mask) // 255
+        mask_area = self.roi_width * self.roi_height
+        change_in_roi = movement_area / mask_area
+
+        return change_in_roi > self.CHANGE_IN_ROI_MASK_THRESHOLD
 
     def check_hand_inside_roi(self, frame, landmarks):
         frame_height, frame_width, _ = frame.shape
