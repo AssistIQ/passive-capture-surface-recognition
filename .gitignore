@@ -5,3 +5,5 @@ src/__pycache__/
 src/lightglue/
 src/mobile-sam/
 src/models/__pycache__
+interactions/
+upload_queue/

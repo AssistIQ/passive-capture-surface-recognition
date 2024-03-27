@@ -1,8 +1,6 @@
 from luxonis_camera import LuxonisCamera
 from opencv_camera import OpenCVCamera
 from frame_processor import FrameProcessor
-from main_interaction_handler import MainInteractionHandler
-import uuid
 import argparse
 import cv2
 
@@ -24,13 +22,7 @@ if __name__ == "__main__":
     print("Invalid camera type")
     exit(1)
 
-  interaction_handler = MainInteractionHandler(device_id=str(uuid.uuid4()))
-  processor = FrameProcessor(
-    roi_size=(1000, 500),
-    roi_position=(100, 200),
-    on_interaction_roi_movement_stopped=interaction_handler.handle_interaction_roi_movement_stopped,
-    on_interaction_end=interaction_handler.handle_interaction_end
-  )
+  processor = FrameProcessor(roi_size=(1000, 500), roi_position=(100, 200))
 
   camera.start()
 

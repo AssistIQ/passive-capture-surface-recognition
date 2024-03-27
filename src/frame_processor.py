@@ -4,30 +4,14 @@ import numpy as np
 import mediapipe as mp
 from models.point import Point
 from models.polygon import Polygon
+from main_interaction_handler import MainInteractionHandler
 
-class FrameProcessor:
-    def __init__(
-            self, 
-            roi_size=(3000, 1700),
-            roi_position=(600, 100),
-            on_interaction_roi_movement_stopped=None,
-            on_interaction_end=None
-        ):
-        """
-        Initialize the FrameProcessor with the given parameters.
-
-        Args:
-            roi_size (tuple): The size of the region of interest (ROI).
-            roi_position (tuple): The position of the ROI.
-            on_interaction_roi_movement_stopped (function): Callback function to be called when no movement is detected in the ROI when a interaction is in progress.
-            on_interaction_end (function): Callback function to be called when an interaction ends.
-        """
+class FrameProcessor():
+    def __init__(self, roi_size=(3000, 1700), roi_position=(600, 100), interaction_handler=MainInteractionHandler()):
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(detectShadows=True)
         self.joint_list = [2,3,4,8,7,6,12,11,10,16,15,14,20,19,18]  # Hand landmarks
         self.hands = mp.solutions.hands.Hands()
-
-        self.on_interaction_roi_movement_stopped = on_interaction_roi_movement_stopped
-        self.on_interaction_end = on_interaction_end
+        self.interaction_handler = interaction_handler
 
         self.roi_width = roi_size[0]
         self.roi_height = roi_size[1]
@@ -74,6 +58,8 @@ class FrameProcessor:
         mask = self.filter_out_shadows(mask)
         mask = self.erode_and_dilate(mask)
 
+        self.interaction_handler.on_interaction_ongoing(frame)
+
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         if self.is_hand_detected_in_roi(rgb_frame):
@@ -97,6 +83,7 @@ class FrameProcessor:
         if not self.is_interaction_started:
             self.is_interaction_started = True
             self.interaction_start_ts = current_ts
+            self.interaction_handler.on_interaction_start(self.interaction_start_ts)
             print("Interaction started")
         else:
             self.interaction_start_ts = current_ts
@@ -112,19 +99,12 @@ class FrameProcessor:
 
     def handle_no_movement_in_roi(self, frame):
         if self.frames_without_movement == 0:
-            if self.on_interaction_roi_movement_stopped is not None:
-                print("testessadsad")
-                self.on_interaction_roi_movement_stopped(frame, self.interaction_start_ts)
-            else:
-                print("No movement stopped handler provided")
+            self.interaction_handler.on_interaction_roi_movement_stopped(frame, self.interaction_start_ts)
 
         self.frames_without_movement += 1
         if self.frames_without_movement > self.INTERACTION_END_THRESHOLD_FRAMES:
             print("roi has no movement, end interaction")
-            if self.on_interaction_end is not None:
-                self.on_interaction_end(self.interaction_start_ts)
-            else:
-                print("No interaction end handler provided")
+            self.interaction_handler.on_interaction_end(self.interaction_start_ts)
             self.reset_interaction()
             
     
